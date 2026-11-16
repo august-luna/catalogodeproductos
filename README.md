@@ -36,4 +36,4 @@ El catálogo y el panel se conectan a MySQL mediante el binding `HYPERDRIVE` de 
 - `npm run lint`: ejecuta ESLint.
 - `npm run build`: genera la aplicación para producción.
 - `npm run cf:build`: genera el Worker con OpenNext.
-- `npm run cf:deploy`: genera el Worker y lo despliega con Wrangler.
+- `npm run cf:deploy`: genera el Worker con OpenNext y lo despliega con Wrangler.
