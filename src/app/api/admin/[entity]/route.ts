@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import type { Connection, RowDataPacket } from "mysql2/promise";
 import { hashPassword } from "@/lib/passwords";
-import { getConnection, getDatabase } from "@/lib/db";
+import {
+  getConnection,
+  getDatabase,
+  logDatabaseError,
+} from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-session";
 
 const entities = [
@@ -159,7 +163,7 @@ function databaseError(error: unknown) {
       { status: 409 },
     );
   }
-  console.error("Admin data request failed:", error);
+  logDatabaseError("admin_data_request", error);
   return NextResponse.json(
     { error: "No se pudo completar la operación. Revisa los datos e inténtalo de nuevo." },
     { status: 500 },

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { createSessionToken, setAdminSession } from "@/lib/admin-session";
-import { getDatabase } from "@/lib/db";
+import { getDatabase, logDatabaseError } from "@/lib/db";
 import { verifyPassword } from "@/lib/passwords";
 
 type UserRow = RowDataPacket & {
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ user: { name: user.nombre } });
   } catch (error) {
-    console.error("Admin login failed:", error);
+    logDatabaseError("admin_login", error);
     return NextResponse.json(
       { error: "No se pudo iniciar sesión. Revisa la configuración del servidor." },
       { status: 500 },
