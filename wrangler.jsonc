@@ -37,7 +37,7 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["DOQueueHandler"]
+      "new_sqlite_classes": ["DOQueueHandler"]
     }
   ],
   "images": {
