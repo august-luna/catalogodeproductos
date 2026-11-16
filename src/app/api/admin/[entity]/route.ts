@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import type { PoolConnection, RowDataPacket } from "mysql2/promise";
+import type { Connection, RowDataPacket } from "mysql2/promise";
 import { hashPassword } from "@/lib/passwords";
-import { getPool } from "@/lib/db";
+import { getConnection, getDatabase } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-session";
 
 const entities = [
@@ -202,7 +202,7 @@ async function getList(entity: Entity) {
       GROUP BY e.pk_clave_est
       ORDER BY e.pk_clave_est`,
   };
-  const [rows] = await getPool().query<RowDataPacket[]>(queries[entity]);
+  const [rows] = await getDatabase().query<RowDataPacket[]>(queries[entity]);
   return rows;
 }
 
@@ -218,7 +218,7 @@ function moneyFromCents(cents: number) {
 const maximumOrderTotalCents = 9_999_999_999;
 
 async function addOrderItems(
-  connection: PoolConnection,
+  connection: Connection,
   orderId: number,
   items: unknown,
 ) {
@@ -293,7 +293,7 @@ async function createOrder(body: Body) {
   const userId = integer(body, "usuario_id", { minimum: 1 });
   const statusId = integer(body, "estatus_id", { minimum: 1 });
   const observations = text(body, "observaciones", 5000, true);
-  const connection = await getPool().getConnection();
+  const connection = await getConnection();
 
   try {
     await connection.beginTransaction();
@@ -314,7 +314,7 @@ async function createOrder(body: Body) {
     await connection.rollback();
     throw error;
   } finally {
-    connection.release();
+    await connection.end();
   }
 }
 
@@ -322,7 +322,7 @@ async function addExistingOrderDetail(body: Body) {
   const orderId = integer(body, "orderId", { minimum: 1, maximum: 2_147_483_647 });
   const productId = integer(body, "productId", { minimum: 1, maximum: 2_147_483_647 });
   const quantity = integer(body, "cantidad", { minimum: 1, maximum: 1_000_000 });
-  const connection = await getPool().getConnection();
+  const connection = await getConnection();
 
   try {
     await connection.beginTransaction();
@@ -375,12 +375,12 @@ async function addExistingOrderDetail(body: Body) {
     await connection.rollback();
     throw error;
   } finally {
-    connection.release();
+    await connection.end();
   }
 }
 
 async function updateOrderDetail(id: number, quantity: number) {
-  const connection = await getPool().getConnection();
+  const connection = await getConnection();
   try {
     await connection.beginTransaction();
     const [references] = await connection.execute<RowDataPacket[]>(
@@ -434,12 +434,12 @@ async function updateOrderDetail(id: number, quantity: number) {
     await connection.rollback();
     throw error;
   } finally {
-    connection.release();
+    await connection.end();
   }
 }
 
 async function deleteOrderDetail(id: number) {
-  const connection = await getPool().getConnection();
+  const connection = await getConnection();
   try {
     await connection.beginTransaction();
     const [references] = await connection.execute<RowDataPacket[]>(
@@ -486,7 +486,7 @@ async function deleteOrderDetail(id: number) {
     await connection.rollback();
     throw error;
   } finally {
-    connection.release();
+    await connection.end();
   }
 }
 
@@ -521,7 +521,7 @@ export async function POST(
 
   try {
     const body = await readBody(request);
-    const pool = getPool();
+    const pool = getDatabase();
 
     switch (entity) {
       case "products": {
@@ -610,7 +610,7 @@ export async function PATCH(
 
   try {
     const body = await readBody(request);
-    const pool = getPool();
+    const pool = getDatabase();
     switch (entity) {
       case "products": {
         const name = text(body, "nombre", 100);
@@ -748,7 +748,7 @@ export async function DELETE(
   }
 
   try {
-    const pool = getPool();
+    const pool = getDatabase();
     switch (entity) {
       case "products":
         await pool.execute("UPDATE tb_productos SET activo = 0 WHERE pk_clave_pro = ?", [id]);

@@ -2,7 +2,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import type { RowDataPacket } from "mysql2";
-import { getPool } from "@/lib/db";
+import { getDatabase } from "@/lib/db";
 
 const cookieName = "la-barra-admin";
 const sessionLifetimeSeconds = 60 * 60 * 8;
@@ -83,7 +83,7 @@ export async function getAdminSession(): Promise<AdminSession | null> {
     return null;
   }
 
-  const [rows] = await getPool().execute<RowDataPacket[]>(
+  const [rows] = await getDatabase().execute<RowDataPacket[]>(
     "SELECT activo, rol FROM tb_usuarios WHERE pk_clave_usu = ? LIMIT 1",
     [session.id],
   );

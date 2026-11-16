@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { createSessionToken, setAdminSession } from "@/lib/admin-session";
-import { getPool } from "@/lib/db";
+import { getDatabase } from "@/lib/db";
 import { verifyPassword } from "@/lib/passwords";
 
 type UserRow = RowDataPacket & {
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const [rows] = await getPool().execute<UserRow[]>(
+    const [rows] = await getDatabase().execute<UserRow[]>(
       `SELECT pk_clave_usu, nombre, usuario, contrasena, activo, rol
        FROM tb_usuarios
        WHERE usuario = ?
