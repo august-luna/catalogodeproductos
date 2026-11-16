@@ -37,3 +37,5 @@ El catálogo y el panel se conectan a MySQL mediante el binding `HYPERDRIVE` de 
 - `npm run build`: genera la aplicación para producción.
 - `npm run cf:build`: genera el Worker con OpenNext.
 - `npm run cf:deploy`: genera el Worker con OpenNext y lo despliega con Wrangler.
+
+En Cloudflare Workers Builds, configura `OPEN_NEXT_DEPLOY=true` en las variables de compilación y usa `npx wrangler deploy` como comando de despliegue. Esto evita que Wrangler redirija el comando al deploy de OpenNext, que necesita simular localmente el binding de Hyperdrive.
