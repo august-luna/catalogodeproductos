@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const [rows] = await getDatabase().execute<UserRow[]>(
+    const [rows] = await getDatabase().query<UserRow[]>(
       `SELECT pk_clave_usu, nombre, usuario, contrasena, activo, rol
        FROM tb_usuarios
        WHERE usuario = ?

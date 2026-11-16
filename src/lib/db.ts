@@ -99,10 +99,6 @@ async function withConnection<T>(
 }
 
 type Database = {
-  execute<T extends QueryResult>(
-    sql: string,
-    values?: QueryValues,
-  ): Promise<[T, FieldPacket[]]>;
   query<T extends QueryResult>(
     sql: string,
     values?: QueryValues,
@@ -111,10 +107,6 @@ type Database = {
 
 export function getDatabase(): Database {
   return {
-    execute: <T extends QueryResult>(sql: string, values?: QueryValues) =>
-      withConnection("query", (connection) =>
-        connection.query<T>(sql, values),
-      ),
     query: <T extends QueryResult>(sql: string, values?: QueryValues) =>
       withConnection("query", (connection) => connection.query<T>(sql, values)),
   };

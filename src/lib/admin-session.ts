@@ -83,7 +83,7 @@ export async function getAdminSession(): Promise<AdminSession | null> {
     return null;
   }
 
-  const [rows] = await getDatabase().execute<RowDataPacket[]>(
+  const [rows] = await getDatabase().query<RowDataPacket[]>(
     "SELECT activo, rol FROM tb_usuarios WHERE pk_clave_usu = ? LIMIT 1",
     [session.id],
   );

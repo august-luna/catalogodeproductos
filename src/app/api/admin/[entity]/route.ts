@@ -249,7 +249,7 @@ async function addOrderItems(
 
   const ids = [...quantities.keys()];
   const placeholders = ids.map(() => "?").join(", ");
-  const [rows] = await connection.execute<RowDataPacket[]>(
+  const [rows] = await connection.query<RowDataPacket[]>(
     `SELECT pk_clave_pro AS id, precio, stock, activo
      FROM tb_productos
      WHERE pk_clave_pro IN (${placeholders})
@@ -275,7 +275,7 @@ async function addOrderItems(
     if (totalCents > maximumOrderTotalCents) {
       throw new RequestError("El total del pedido excede el máximo permitido.");
     }
-    await connection.execute(
+    await connection.query(
       `INSERT INTO tb_detalle_pedidos
        (precio, fk_clave_ped, fk_clave_pro, cantidad)
        VALUES (?, ?, ?, ?)`,
@@ -283,7 +283,7 @@ async function addOrderItems(
     );
 
     if (row.stock !== null) {
-      await connection.execute(
+      await connection.query(
         `UPDATE tb_productos SET stock = stock - ?
          WHERE pk_clave_pro = ? AND stock >= ?`,
         [quantity, row.id, quantity],
@@ -301,14 +301,14 @@ async function createOrder(body: Body) {
 
   try {
     await connection.beginTransaction();
-    const [order] = await connection.execute(
+    const [order] = await connection.query(
       `INSERT INTO tb_pedidos (fk_clave_usu, fk_clave_est, observaciones, total)
        VALUES (?, ?, ?, 0)`,
       [userId, statusId, observations],
     );
     const orderId = Number((order as { insertId: number }).insertId);
     const total = await addOrderItems(connection, orderId, body.items);
-    await connection.execute("UPDATE tb_pedidos SET total = ? WHERE pk_clave_ped = ?", [
+    await connection.query("UPDATE tb_pedidos SET total = ? WHERE pk_clave_ped = ?", [
       moneyFromCents(total),
       orderId,
     ]);
@@ -330,13 +330,13 @@ async function addExistingOrderDetail(body: Body) {
 
   try {
     await connection.beginTransaction();
-    const [orders] = await connection.execute<RowDataPacket[]>(
+    const [orders] = await connection.query<RowDataPacket[]>(
       "SELECT pk_clave_ped FROM tb_pedidos WHERE pk_clave_ped = ? FOR UPDATE",
       [orderId],
     );
     if (orders.length === 0) throw new RequestError("El pedido no existe.", 404);
 
-    const [products] = await connection.execute<RowDataPacket[]>(
+    const [products] = await connection.query<RowDataPacket[]>(
       `SELECT precio, stock, activo FROM tb_productos
        WHERE pk_clave_pro = ? FOR UPDATE`,
       [productId],
@@ -350,27 +350,27 @@ async function addExistingOrderDetail(body: Body) {
       throw new RequestError("No hay existencias suficientes.", 409);
     }
 
-    await connection.execute(
+    await connection.query(
       `INSERT INTO tb_detalle_pedidos
        (precio, fk_clave_ped, fk_clave_pro, cantidad)
        VALUES (?, ?, ?, ?)`,
       [product.precio, orderId, productId, quantity],
     );
     if (product.stock !== null) {
-      await connection.execute(
+      await connection.query(
         "UPDATE tb_productos SET stock = stock - ? WHERE pk_clave_pro = ?",
         [quantity, productId],
       );
     }
 
-    const [totals] = await connection.execute<RowDataPacket[]>(
+    const [totals] = await connection.query<RowDataPacket[]>(
       "SELECT COALESCE(SUM(subtotal), 0) AS total FROM tb_detalle_pedidos WHERE fk_clave_ped = ?",
       [orderId],
     );
     if (centsForPrice(totals[0].total as string | number) > maximumOrderTotalCents) {
       throw new RequestError("El total del pedido excede el máximo permitido.", 409);
     }
-    await connection.execute("UPDATE tb_pedidos SET total = ? WHERE pk_clave_ped = ?", [
+    await connection.query("UPDATE tb_pedidos SET total = ? WHERE pk_clave_ped = ?", [
       totals[0].total,
       orderId,
     ]);
@@ -387,17 +387,17 @@ async function updateOrderDetail(id: number, quantity: number) {
   const connection = await getConnection();
   try {
     await connection.beginTransaction();
-    const [references] = await connection.execute<RowDataPacket[]>(
+    const [references] = await connection.query<RowDataPacket[]>(
       "SELECT fk_clave_ped AS orderId FROM tb_detalle_pedidos WHERE pk_clave_det = ?",
       [id],
     );
     const orderId = references[0]?.orderId;
     if (!orderId) throw new RequestError("El detalle de pedido no existe.", 404);
-    await connection.execute(
+    await connection.query(
       "SELECT pk_clave_ped FROM tb_pedidos WHERE pk_clave_ped = ? FOR UPDATE",
       [orderId],
     );
-    const [rows] = await connection.execute<RowDataPacket[]>(
+    const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT d.fk_clave_ped AS orderId, d.fk_clave_pro AS productId,
           d.cantidad AS quantity, p.stock
        FROM tb_detalle_pedidos d
@@ -413,23 +413,23 @@ async function updateOrderDetail(id: number, quantity: number) {
       throw new RequestError("No hay existencias suficientes.", 409);
     }
     if (detail.stock !== null && delta !== 0) {
-      await connection.execute(
+      await connection.query(
         "UPDATE tb_productos SET stock = stock - ? WHERE pk_clave_pro = ?",
         [delta, detail.productId],
       );
     }
-    await connection.execute(
+    await connection.query(
       "UPDATE tb_detalle_pedidos SET cantidad = ? WHERE pk_clave_det = ?",
       [quantity, id],
     );
-    const [totals] = await connection.execute<RowDataPacket[]>(
+    const [totals] = await connection.query<RowDataPacket[]>(
       "SELECT COALESCE(SUM(subtotal), 0) AS total FROM tb_detalle_pedidos WHERE fk_clave_ped = ?",
       [detail.orderId],
     );
     if (centsForPrice(totals[0].total as string | number) > maximumOrderTotalCents) {
       throw new RequestError("El total del pedido excede el máximo permitido.", 409);
     }
-    await connection.execute(
+    await connection.query(
       "UPDATE tb_pedidos SET total = ? WHERE pk_clave_ped = ?",
       [totals[0].total, detail.orderId],
     );
@@ -446,17 +446,17 @@ async function deleteOrderDetail(id: number) {
   const connection = await getConnection();
   try {
     await connection.beginTransaction();
-    const [references] = await connection.execute<RowDataPacket[]>(
+    const [references] = await connection.query<RowDataPacket[]>(
       "SELECT fk_clave_ped AS orderId FROM tb_detalle_pedidos WHERE pk_clave_det = ?",
       [id],
     );
     const orderId = references[0]?.orderId;
     if (!orderId) throw new RequestError("El detalle de pedido no existe.", 404);
-    await connection.execute(
+    await connection.query(
       "SELECT pk_clave_ped FROM tb_pedidos WHERE pk_clave_ped = ? FOR UPDATE",
       [orderId],
     );
-    const [rows] = await connection.execute<RowDataPacket[]>(
+    const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT d.fk_clave_ped AS orderId, d.fk_clave_pro AS productId,
           d.cantidad AS quantity, p.stock
        FROM tb_detalle_pedidos d
@@ -467,21 +467,21 @@ async function deleteOrderDetail(id: number) {
     const detail = rows[0];
     if (!detail) throw new RequestError("El detalle de pedido no existe.", 404);
 
-    await connection.execute("DELETE FROM tb_detalle_pedidos WHERE pk_clave_det = ?", [id]);
+    await connection.query("DELETE FROM tb_detalle_pedidos WHERE pk_clave_det = ?", [id]);
     if (detail.stock !== null) {
-      await connection.execute(
+      await connection.query(
         "UPDATE tb_productos SET stock = stock + ? WHERE pk_clave_pro = ?",
         [detail.quantity, detail.productId],
       );
     }
-    const [totals] = await connection.execute<RowDataPacket[]>(
+    const [totals] = await connection.query<RowDataPacket[]>(
       "SELECT COALESCE(SUM(subtotal), 0) AS total FROM tb_detalle_pedidos WHERE fk_clave_ped = ?",
       [detail.orderId],
     );
     if (centsForPrice(totals[0].total as string | number) > maximumOrderTotalCents) {
       throw new RequestError("El total del pedido excede el máximo permitido.", 409);
     }
-    await connection.execute(
+    await connection.query(
       "UPDATE tb_pedidos SET total = ? WHERE pk_clave_ped = ?",
       [totals[0].total, detail.orderId],
     );
@@ -535,7 +535,7 @@ export async function POST(
         const description = text(body, "descripcion", 65535, true);
         const stock = integer(body, "stock", { maximum: 2_147_483_647, optional: true });
         const photo = text(body, "fotografia", 1000);
-        await pool.execute(
+        await pool.query(
           `INSERT INTO tb_productos
            (nombre, precio, fk_clave_cat, descripcion, stock, txt_foto_pro, activo)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -544,7 +544,7 @@ export async function POST(
         break;
       }
       case "categories":
-        await pool.execute(
+        await pool.query(
           "INSERT INTO tb_categorias (nombre, descripcion) VALUES (?, ?)",
           [text(body, "nombre", 50), text(body, "descripcion", 255, true)],
         );
@@ -560,7 +560,7 @@ export async function POST(
         }
         const role = body.rol === "admin" ? "admin" : body.rol === "usuario" || body.rol === undefined ? "usuario" : null;
         if (!role) throw new RequestError("El rol no es válido.");
-        await pool.execute(
+        await pool.query(
           `INSERT INTO tb_usuarios (nombre, usuario, contrasena, activo, rol)
            VALUES (?, ?, ?, ?, ?)`,
           [
@@ -574,7 +574,7 @@ export async function POST(
         break;
       }
       case "statuses":
-        await pool.execute(
+        await pool.query(
           "INSERT INTO tb_estatus_pedidos (nombre, descripcion) VALUES (?, ?)",
           [text(body, "nombre", 50), text(body, "descripcion", 100, true)],
         );
@@ -622,7 +622,7 @@ export async function PATCH(
         const productPrice = price(body);
         const description = text(body, "descripcion", 65535, true);
         const stock = integer(body, "stock", { maximum: 2_147_483_647, optional: true });
-        await pool.execute(
+        await pool.query(
           `UPDATE tb_productos SET nombre = ?, precio = ?, fk_clave_cat = ?,
            descripcion = ?, stock = ?, txt_foto_pro = ?, activo = ?
            WHERE pk_clave_pro = ?`,
@@ -640,7 +640,7 @@ export async function PATCH(
         break;
       }
       case "categories":
-        await pool.execute(
+        await pool.query(
           "UPDATE tb_categorias SET nombre = ?, descripcion = ? WHERE pk_clave_cat = ?",
           [text(body, "nombre", 50), text(body, "descripcion", 255, true), id],
         );
@@ -652,7 +652,7 @@ export async function PATCH(
         if (id === auth.session.id && (!active || role !== "admin")) {
           throw new RequestError("No puedes desactivar ni quitar el rol de tu propia cuenta.", 409);
         }
-        const [currentUsers] = await pool.execute<RowDataPacket[]>(
+        const [currentUsers] = await pool.query<RowDataPacket[]>(
           "SELECT activo, rol FROM tb_usuarios WHERE pk_clave_usu = ?",
           [id],
         );
@@ -684,7 +684,7 @@ export async function PATCH(
           throw new RequestError("La contraseña debe tener al menos 8 caracteres.");
         }
         if (newPassword.length > 0) {
-          await pool.execute(
+          await pool.query(
             `UPDATE tb_usuarios SET nombre = ?, usuario = ?, activo = ?, rol = ?, contrasena = ?
              WHERE pk_clave_usu = ?`,
             [
@@ -697,7 +697,7 @@ export async function PATCH(
             ],
           );
         } else {
-          await pool.execute(
+          await pool.query(
             `UPDATE tb_usuarios SET nombre = ?, usuario = ?, activo = ?, rol = ?
              WHERE pk_clave_usu = ?`,
             [text(body, "nombre", 100), text(body, "usuario", 50), active, role, id],
@@ -706,7 +706,7 @@ export async function PATCH(
         break;
       }
       case "orders":
-        await pool.execute(
+        await pool.query(
           `UPDATE tb_pedidos SET fk_clave_est = ?, observaciones = ?
            WHERE pk_clave_ped = ?`,
           [
@@ -720,7 +720,7 @@ export async function PATCH(
         await updateOrderDetail(id, integer(body, "cantidad", { minimum: 1 }));
         break;
       case "statuses":
-        await pool.execute(
+        await pool.query(
           "UPDATE tb_estatus_pedidos SET nombre = ?, descripcion = ? WHERE pk_clave_est = ?",
           [text(body, "nombre", 50), text(body, "descripcion", 100, true), id],
         );
@@ -755,13 +755,13 @@ export async function DELETE(
     const pool = getDatabase();
     switch (entity) {
       case "products":
-        await pool.execute("UPDATE tb_productos SET activo = 0 WHERE pk_clave_pro = ?", [id]);
+        await pool.query("UPDATE tb_productos SET activo = 0 WHERE pk_clave_pro = ?", [id]);
         break;
       case "users": {
         if (id === auth.session.id) {
           throw new RequestError("No puedes desactivar tu propia cuenta.", 409);
         }
-        const [target] = await pool.execute<RowDataPacket[]>(
+        const [target] = await pool.query<RowDataPacket[]>(
           "SELECT rol, activo FROM tb_usuarios WHERE pk_clave_usu = ?",
           [id],
         );
@@ -773,14 +773,14 @@ export async function DELETE(
             throw new RequestError("Debe quedar al menos un administrador activo.", 409);
           }
         }
-        await pool.execute("UPDATE tb_usuarios SET activo = 0 WHERE pk_clave_usu = ?", [id]);
+        await pool.query("UPDATE tb_usuarios SET activo = 0 WHERE pk_clave_usu = ?", [id]);
         break;
       }
       case "categories":
-        await pool.execute("DELETE FROM tb_categorias WHERE pk_clave_cat = ?", [id]);
+        await pool.query("DELETE FROM tb_categorias WHERE pk_clave_cat = ?", [id]);
         break;
       case "statuses":
-        await pool.execute("DELETE FROM tb_estatus_pedidos WHERE pk_clave_est = ?", [id]);
+        await pool.query("DELETE FROM tb_estatus_pedidos WHERE pk_clave_est = ?", [id]);
         break;
       case "order-details":
         await deleteOrderDetail(id);

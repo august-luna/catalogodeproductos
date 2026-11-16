@@ -44,7 +44,7 @@ function resolvePhotoPath(photo: string): string | null {
 }
 
 export async function getCatalogProducts(): Promise<CatalogProduct[]> {
-  const [rows] = await getDatabase().execute<ProductRow[]>(`
+  const [rows] = await getDatabase().query<ProductRow[]>(`
     SELECT
       p.pk_clave_pro AS id,
       p.nombre AS name,
