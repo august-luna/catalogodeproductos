@@ -3,7 +3,6 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import {
   createConnection,
   type Connection,
-  type ExecuteValues,
   type FieldPacket,
   type QueryResult,
   type QueryValues,
@@ -102,7 +101,7 @@ async function withConnection<T>(
 type Database = {
   execute<T extends QueryResult>(
     sql: string,
-    values?: ExecuteValues,
+    values?: QueryValues,
   ): Promise<[T, FieldPacket[]]>;
   query<T extends QueryResult>(
     sql: string,
@@ -112,9 +111,9 @@ type Database = {
 
 export function getDatabase(): Database {
   return {
-    execute: <T extends QueryResult>(sql: string, values?: ExecuteValues) =>
-      withConnection("execute", (connection) =>
-        connection.execute<T>(sql, values),
+    execute: <T extends QueryResult>(sql: string, values?: QueryValues) =>
+      withConnection("query", (connection) =>
+        connection.query<T>(sql, values),
       ),
     query: <T extends QueryResult>(sql: string, values?: QueryValues) =>
       withConnection("query", (connection) => connection.query<T>(sql, values)),
