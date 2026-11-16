@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { Connection, RowDataPacket } from "mysql2/promise";
+import type { RowDataPacket } from "mysql2/promise";
 import { hashPassword } from "@/lib/passwords";
 import {
   getConnection,
@@ -7,6 +7,11 @@ import {
   logDatabaseError,
 } from "@/lib/db";
 import { getAdminSession } from "@/lib/admin-session";
+import {
+  createOrder as createTransactionalOrder,
+  OrderError,
+  parseOrderItems,
+} from "@/lib/orders";
 
 const entities = [
   "products",
@@ -215,110 +220,25 @@ function centsForPrice(value: string | number) {
   return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
 }
 
-function moneyFromCents(cents: number) {
-  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
-}
-
 const maximumOrderTotalCents = 9_999_999_999;
-
-async function addOrderItems(
-  connection: Connection,
-  orderId: number,
-  items: unknown,
-) {
-  if (!Array.isArray(items) || items.length === 0 || items.length > 30) {
-    throw new RequestError("Agrega entre 1 y 30 productos al pedido.");
-  }
-
-  const quantities = new Map<number, number>();
-  for (const item of items) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new RequestError("La lista de productos del pedido no es válida.");
-    }
-    const row = item as Record<string, unknown>;
-    const productId = integer(row, "productId", {
-      minimum: 1,
-      maximum: 2_147_483_647,
-    });
-    const quantity = integer(row, "quantity", { minimum: 1, maximum: 1_000_000 });
-    quantities.set(productId, (quantities.get(productId) ?? 0) + quantity);
-    if (quantities.get(productId)! > 1_000_000) {
-      throw new RequestError("La cantidad de un producto excede el máximo permitido.");
-    }
-  }
-
-  const ids = [...quantities.keys()];
-  const placeholders = ids.map(() => "?").join(", ");
-  const [rows] = await connection.query<RowDataPacket[]>(
-    `SELECT pk_clave_pro AS id, precio, stock, activo
-     FROM tb_productos
-     WHERE pk_clave_pro IN (${placeholders})
-     FOR UPDATE`,
-    ids,
-  );
-  if (rows.length !== ids.length) {
-    throw new RequestError("Uno o más productos ya no existen.", 409);
-  }
-
-  let totalCents = 0;
-  for (const row of rows) {
-    const quantity = quantities.get(row.id as number)!;
-    if (row.activo !== 1) {
-      throw new RequestError("No se pueden agregar productos inactivos.", 409);
-    }
-    if (row.stock !== null && Number(row.stock) < quantity) {
-      throw new RequestError("No hay existencias suficientes para un producto.", 409);
-    }
-
-    const unitPriceCents = centsForPrice(row.precio as string | number);
-    totalCents += unitPriceCents * quantity;
-    if (totalCents > maximumOrderTotalCents) {
-      throw new RequestError("El total del pedido excede el máximo permitido.");
-    }
-    await connection.query(
-      `INSERT INTO tb_detalle_pedidos
-       (precio, fk_clave_ped, fk_clave_pro, cantidad)
-       VALUES (?, ?, ?, ?)`,
-      [moneyFromCents(unitPriceCents), orderId, row.id, quantity],
-    );
-
-    if (row.stock !== null) {
-      await connection.query(
-        `UPDATE tb_productos SET stock = stock - ?
-         WHERE pk_clave_pro = ? AND stock >= ?`,
-        [quantity, row.id, quantity],
-      );
-    }
-  }
-  return totalCents;
-}
 
 async function createOrder(body: Body) {
   const userId = integer(body, "usuario_id", { minimum: 1 });
   const statusId = integer(body, "estatus_id", { minimum: 1 });
   const observations = text(body, "observaciones", 5000, true);
-  const connection = await getConnection();
-
   try {
-    await connection.beginTransaction();
-    const [order] = await connection.query(
-      `INSERT INTO tb_pedidos (fk_clave_usu, fk_clave_est, observaciones, total)
-       VALUES (?, ?, ?, 0)`,
-      [userId, statusId, observations],
-    );
-    const orderId = Number((order as { insertId: number }).insertId);
-    const total = await addOrderItems(connection, orderId, body.items);
-    await connection.query("UPDATE tb_pedidos SET total = ? WHERE pk_clave_ped = ?", [
-      moneyFromCents(total),
-      orderId,
-    ]);
-    await connection.commit();
-    return orderId;
+    const result = await createTransactionalOrder({
+      userId,
+      statusId,
+      observations,
+      items: parseOrderItems(body.items),
+    });
+    return result.orderId;
   } catch (error) {
-    await connection.rollback();
+    if (error instanceof OrderError) {
+      throw new RequestError(error.message, error.status);
+    }
     throw error;
-  } finally {
-    await connection.end();
   }
 }
 

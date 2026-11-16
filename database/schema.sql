@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS tb_estatus_pedidos (
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_0900_ai_ci;
 
+INSERT INTO tb_estatus_pedidos (nombre, descripcion)
+SELECT 'Pendiente', 'Pedido recibido, pendiente de preparación'
+WHERE NOT EXISTS (
+  SELECT 1 FROM tb_estatus_pedidos WHERE LOWER(TRIM(nombre)) = 'pendiente'
+);
+
 CREATE TABLE IF NOT EXISTS tb_usuarios (
   pk_clave_usu INT NOT NULL AUTO_INCREMENT,
   nombre VARCHAR(100) NOT NULL,
